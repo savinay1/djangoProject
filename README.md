@@ -1,1 +1,1 @@
-Movie Sentiment ANalysis using Django
+Movie Sentiment Analysis using Django
