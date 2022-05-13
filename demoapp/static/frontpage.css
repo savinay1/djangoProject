@@ -1,6 +1,7 @@
 body
 {
     background-color:rgba(139,48,40,0.97);
+    display: inline-block;
     text-align: center
 }
 h1
