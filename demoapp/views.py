@@ -1,3 +1,5 @@
+import os
+
 from django.shortcuts import render
 from django.http import HttpResponse
 # Create your views here.
@@ -5,7 +7,12 @@ from .forms import Form
 from urllib import request as rq
 import pandas as pd
 import simplejson
-import matplotlib.pyplot as plt
+from django.conf import settings
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+
+
 import re
 
 import nltk
@@ -17,6 +24,9 @@ from nltk.corpus import stopwords
 nltk.download('wordnet')
 nltk.download('averaged_perceptron_tagger')
 from nltk.corpus import wordnet
+
+from textblob import TextBlob
+
 
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 analyzer = SentimentIntensityAnalyzer()
@@ -63,22 +73,42 @@ def clean(text):
 # function to calculate vader sentiment
 def vadersentimentanalysis(review):
     vs = analyzer.polarity_scores(review)
-    return vs['compound']
+    return vs
 
-def vader_analysis(compound):
-    if compound >= 0.5:
-        return 'Positive'
-    elif compound <= -0.5 :
+def vader_analysis(vs):
+    if vs['neg'] > 0.15:
         return 'Negative'
+    elif vs['pos']>0.0 :
+        return 'Positive'
     else:
         return 'Neutral'
 
+
 def results(request):
     hi(request)
-    print(vader_counts)
     context = {}
-    context["Results"] = vader_counts.to_dict()
+    # context["Results"] = vader_counts.to_dict()
+    # return render(request,'demoapp/results.html',context)
+    labels = []
+    sizes = []
+    context["Movie"]=movie
+    context["Filter"]=filter
+    if len(vader_counts)==0:
+        context["Results"]="No Results found .Please try another Movie"
+    for x, y in vader_counts.items():
+        labels.append(x)
+        sizes.append(y)
+    fig = plt.figure()
+    fig.patch.set_facecolor((139/255,48/255,40/255,0.97/255))
+    plt.pie(sizes, labels=labels,autopct='%1.1f%%',shadow=True)
+
+    plt.axis('equal')
+    plt.savefig(settings.STATIC_ROOT+settings.STATIC_URL+'sentiments.png')
     return render(request,'demoapp/results.html',context)
+
+
+
+
 
 def hi(request):
     #return HttpResponse('<h1>Homepage</h1>')
@@ -86,25 +116,49 @@ def hi(request):
         form = Form(request.POST)
 
         if form.is_valid():
+            global movie
             movie= form.cleaned_data['Enter_movie_title']
+            global filter
             filter= form.cleaned_data['Filter']
             rows= form.cleaned_data['Results']
+            movie=movie.replace(" ","%20")
 
             connection = rq.urlopen('http://localhost:8983/solr/movies/query?q='+filter+":"+movie+"&rows="+str(rows))
             response = simplejson.load(connection)
             docs=response['response']['docs']
+            global vader_counts
+            if len(docs)==0:
+                vader_counts={}
             comments=[]
+            check="Comments"
+            if filter=="Post_Text":
+                check='Comments'
+            elif filter=="Comments":
+                check='Post_Text'
+            elif filter=="Replies":
+                check="Comments"
             for response in docs:
-                comments.append(response['Comments'])
+                try:
+                    comments.append(response[check])
+                except:
+                    comments.append(response['Comments'])
+
+
             df=pd.DataFrame(comments,columns =['Comments'])
             # Cleaning the text in the review column
             df['Cleaned Reviews'] = df['Comments'].apply(clean)
             df['POS tagged'] = df['Cleaned Reviews'].apply(token_stop_pos)
             df['Lemma'] = df['POS tagged'].apply(lemmatize)
             fin_data = pd.DataFrame(df[['Comments', 'Lemma']])
+            # fin_data['Polarity'] = fin_data['Lemma'].apply(getPolarity)
+            # fin_data['Analysis'] = fin_data['Polarity'].apply(analysis)
+            # global tb_counts
+            # tb_counts = fin_data.Analysis.value_counts()
+            # tb_counts = fin_data['Analysis'].value_counts()
+            # print(tb_counts)
             fin_data['Vader Sentiment'] = fin_data['Lemma'].apply(vadersentimentanalysis)
             fin_data['Vader Analysis'] = fin_data['Vader Sentiment'].apply(vader_analysis)
-            global vader_counts
+            print(fin_data)
             vader_counts=fin_data['Vader Analysis'].value_counts()
 
     form=Form()
