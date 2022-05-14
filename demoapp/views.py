@@ -1,18 +1,18 @@
-import os
-
 from django.shortcuts import render
-from django.http import HttpResponse
-# Create your views here.
 from .forms import Form
 from urllib import request as rq
-import pandas as pd
-import simplejson
 from django.conf import settings
+
+# Libraries  to plot
+from matplotlib import pyplot as plt
 import matplotlib
 
 matplotlib.use('Agg')
-from matplotlib import pyplot as plt
+import pandas as pd
+import simplejson
 import re
+
+# Libraries to do text cleaning
 import nltk
 
 nltk.download('punkt')
@@ -27,12 +27,13 @@ nltk.download('averaged_perceptron_tagger')
 from nltk.corpus import wordnet
 
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from nltk.stem import WordNetLemmatizer
 
-analyzer = SentimentIntensityAnalyzer()
 # POS tagger dictionary
 pos_dict = {'J': wordnet.ADJ, 'V': wordnet.VERB, 'N': wordnet.NOUN, 'R': wordnet.ADV}
 
 
+# Removes Stop words and tags POS
 def token_stop_pos(text):
     tags = pos_tag(word_tokenize(text))
     newlist = []
@@ -42,12 +43,9 @@ def token_stop_pos(text):
     return newlist
 
 
-from nltk.stem import WordNetLemmatizer
-
-wordnet_lemmatizer = WordNetLemmatizer()
-
-
+# Lemmatizes the text
 def lemmatize(pos_data):
+    wordnet_lemmatizer = WordNetLemmatizer()
     lemma_rew = " "
     for word, pos in pos_data:
         if not pos:
@@ -59,20 +57,22 @@ def lemmatize(pos_data):
     return lemma_rew
 
 
-# Define a function to clean the text
+# Cleans the text
 def clean(text):
     # Removes all special characters and numericals leaving the alphabets
     text = re.sub('[^A-Za-z]+', ' ', text)
     return text
 
 
-# function to calculate vader sentiment
+# Calculate individual vader sentiment scores
 def vadersentimentanalysis(review):
+    analyzer = SentimentIntensityAnalyzer()
     vs = analyzer.polarity_scores(review)
     return vs
 
 
-def vader_analysis(vs):
+# Vader sentiment
+def vader_sentiment_generator(vs):
     if vs['neg'] > 0.15:
         return 'Negative'
     elif vs['pos'] > 0.0:
@@ -80,76 +80,103 @@ def vader_analysis(vs):
     else:
         return 'Neutral'
 
+# Calculate Vader Sentiment scores
+def vadersentiment(search_results, filter_field):
+    # Construct Dataframe
+    df = pd.DataFrame(search_results, columns=[filter_field])
 
-def results(request):
-    hi(request)
-    context = {}
-    # context["Results"] = vader_counts.to_dict()
-    # return render(request,'demoapp/results.html',context)
-    labels = []
-    sizes = []
-    context["Movie"] = movie
-    context["Filter"] = filterd
-    if len(vader_counts) == 0:
-        context["Results"] = "No Results found .Please try another Movie"
-    colors = {"Positive":"#7AC154", "Negative":"#FF2D14", "Neutral":"#FBB940"}
-    for x, y in vader_counts.items():
-        labels.append(x)
-        sizes.append(y)
-    fig = plt.figure()
-    # fig.patch.set_facecolor((139/255,48/255,40/255,0.97/255))
-    plt.pie(sizes, labels=labels, autopct='%1.1f%%', shadow=True, colors=[colors[key] for key in labels])
+    # Cleaning the text in the review column
+    df['Cleaned Reviews'] = df[filter_field].apply(clean)
+    df['POS tagged'] = df['Cleaned Reviews'].apply(token_stop_pos)
+    df['Lemma'] = df['POS tagged'].apply(lemmatize)
+    fin_data = pd.DataFrame(df[[filter_field, 'Lemma']])
 
-    plt.axis('equal')
-    plt.savefig(settings.STATIC_ROOT + settings.STATIC_URL + 'sentiments.png')
-    return render(request, 'demoapp/results.html', context)
+    # Calculate Polarity Scores
+    fin_data['Vader Sentiment'] = fin_data['Lemma'].apply(vadersentimentanalysis)
+    # Calculate Sentiment
+    fin_data['Vader Analysis'] = fin_data['Vader Sentiment'].apply(vader_sentiment_generator)
+
+    # Return Sentiment Scores
+    return fin_data['Vader Analysis'].value_counts()
 
 
-def hi(request):
-    # return HttpResponse('<h1>Homepage</h1>')
+# Process User request from landing page
+def processrequest(request):
+    global movie
+    global filter_display
+    global vader_counts
+
     if request.method == 'POST':
         form = Form(request.POST)
-        filterkey={"Post_Text":"Post Text","Comments":"Comments","Replies":"Replies"}
+
+        # Process From Contents
         if form.is_valid():
-            global movie
+
+            # Process Form Inputs
+            filterkey = {"Post_Text": "Post Text", "Comments": "Comments", "Replies": "Replies"}
             movie = form.cleaned_data['Enter_movie_title']
-            global filterd
-            filterd = filterkey[form.cleaned_data['Filter']]
-            filter = form.cleaned_data['Filter']
+            filter_display = filterkey[form.cleaned_data['Filter']]
+            filter_solr = form.cleaned_data['Filter']
             rows = form.cleaned_data['Results']
             text = movie.replace(" ", "%20")
 
+            # Connection to Apache Solr
             connection = rq.urlopen(
-                'http://localhost:8983/solr/movies/query?q=' + filter + ":" + text + "&rows=" + str(rows))
+                'http://localhost:8983/solr/movies/query?q=' + filter_solr + ":" + text + "&rows=" + str(rows))
             response = simplejson.load(connection)
+
             docs = response['response']['docs']
-            global vader_counts
+
             if len(docs) == 0:
                 vader_counts = {}
-            comments = []
+
+            # Access Apache Solr documents based on input filter
+            search_results = []
             check = "Comments"
-            if filter == "Post_Text":
+            if filter_solr == "Post_Text":
                 check = 'Comments'
-            elif filter == "Comments":
+            elif filter_solr == "Comments":
                 check = 'Post_Text'
-            elif filter == "Replies":
+            elif filter_solr == "Replies":
                 check = "Comments"
             for response in docs:
                 try:
-                    comments.append(response[check])
+                    search_results.append(response[check])
                 except:
-                    comments.append(response['Comments'])
+                    search_results.append(response['Comments'])
 
-            df = pd.DataFrame(comments, columns=['Comments'])
-            # Cleaning the text in the review column
-            df['Cleaned Reviews'] = df['Comments'].apply(clean)
-            df['POS tagged'] = df['Cleaned Reviews'].apply(token_stop_pos)
-            df['Lemma'] = df['POS tagged'].apply(lemmatize)
-            fin_data = pd.DataFrame(df[['Comments', 'Lemma']])
-
-            fin_data['Vader Sentiment'] = fin_data['Lemma'].apply(vadersentimentanalysis)
-            fin_data['Vader Analysis'] = fin_data['Vader Sentiment'].apply(vader_analysis)
-            vader_counts = fin_data['Vader Analysis'].value_counts()
+            # Get Sentiment Scores
+            vader_counts = vadersentiment(search_results, check)
 
     form = Form()
-    return render(request, 'demoapp/hi.html', {'form': form})
+    return render(request, 'demoapp/landing.html', {'form': form})
+
+# Generates context for Results Page
+def results(request):
+
+    processrequest(request)
+
+    context = {}
+    labels = []
+    sizes = []
+    context["Movie"] = movie
+    context["Filter"] = filter_display
+
+    # If Movie Not Found Edge Case
+    if len(vader_counts) == 0:
+        context["Results"] = "No Results found . Please try another Movie"
+    # Color codes for Pie Chart
+    colors = {"Positive": "#7AC154", "Negative": "#FF2D14", "Neutral": "#FBB940"}
+    print(vader_counts)
+    for x, y in vader_counts.items():
+        labels.append(x)
+        sizes.append(y)
+
+    # Plot Pie Chart based on Sentiment Scores
+    plt.figure()
+    plt.pie(sizes, labels=labels, autopct='%1.1f%%', shadow=True, colors=[colors[key] for key in labels])
+    plt.axis('equal')
+    plt.savefig(settings.STATIC_ROOT + settings.STATIC_URL + 'sentiments.png')
+
+    # Return context to results page
+    return render(request, 'demoapp/results.html', context)
