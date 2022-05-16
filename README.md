@@ -1,7 +1,7 @@
 # Movie Review Sentiment Analysis using Reddit 
 
 ## Tools Used: Python,Django,Apache Solr
-###Prerequisites
+### Prerequisites
 1. Run scrape.py to fetch documents from Reddit Posts
 2. Install Apache Solr.
 3. Navigate to bin directory and run command
