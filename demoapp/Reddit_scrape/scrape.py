@@ -3,7 +3,7 @@ import praw as praw
 import re
 import pandas as pd
 
-# Instiantie PRAW
+# Instantiate PRAW
 reddit_read_only = praw.Reddit(client_id="SvCJdstpGCed5uhK7XJyIw",  # your client id
                                client_secret="avt5nZXQqLbwyUvyWns6L90I_8M-EQ",  # your client secret
                                user_agent="inforetrieval")  # your user agent
