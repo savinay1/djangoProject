@@ -4,7 +4,7 @@
 ### Prerequisites
 1. Run scrape.py in Reddit_scraper to scrape reddit posts in the form of csv from Reddit
 2. Install Apache Solr.
-3. Navigate to bin directory and run command
+3. Navigate to Apache Solr bin directory and run command
     >bin/solr start
 4. Create solr core
     >solr create -c movies
