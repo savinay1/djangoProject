@@ -3,7 +3,7 @@ from django import forms
 
 class Form(forms.Form):
     choices = (
-        ("Post_Text", "Post Text"),
+        ("Post_Text", "Posts"),
         ("Comments", "Comments"),
         ("Replies", "Replies")
     )
