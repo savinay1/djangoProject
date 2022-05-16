@@ -2,7 +2,7 @@
 
 ## Tools Used: Python,Django,Apache Solr
 ### Prerequisites
-1. Run scrape.py to fetch documents from Reddit Posts
+1. Run scrape.py in Reddit_scrape to scrape reddit posts in the form of csv from Reddit
 2. Install Apache Solr.
 3. Navigate to bin directory and run command
     >bin/solr start
